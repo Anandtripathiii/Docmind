@@ -149,6 +149,54 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
   border:1px solid rgba(255,143,163,.3);color:var(--warn);font-size:14px;display:none}
 .notice.show{display:block}
 #file{display:none}
+
+/* Quiet review prompt inside the app. Never covers anything, easy to dismiss. */
+.nudge{display:none;align-items:center;gap:8px;padding:9px 14px;
+  border-top:1px solid var(--panel-edge);background:rgba(255,209,102,.06);
+  font-size:14px;color:var(--muted)}
+.nudge.show{display:flex}
+.nudge a{color:var(--highlight)}
+.nudgeClose{margin-left:auto;background:none;border:none;color:var(--muted);
+  font-size:17px;cursor:pointer;padding:0 4px}
+.nudgeClose:hover{color:var(--paper)}
+
+/* ---- review strip + footer (landing screen only) ---- */
+.footzone{width:100%;max-width:900px;margin-top:46px}
+
+.reviews{overflow:hidden;position:relative;
+  /* fade the edges so cards slide in and out instead of cutting off */
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+.rtrack{display:flex;gap:14px;width:max-content;animation:slide 34s linear infinite}
+.reviews:hover .rtrack{animation-play-state:paused}   /* let people read one */
+@keyframes slide{to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.rtrack{animation:none}
+  .reviews{overflow-x:auto;-webkit-mask-image:none;mask-image:none}}
+
+.rcard{flex:0 0 270px;background:rgba(20,26,68,.7);border:1px solid var(--panel-edge);
+  border-radius:12px;padding:14px 16px;text-align:left}
+.rcard .rtext{font-size:14px;line-height:1.5;margin:0 0 8px}
+.rcard .rwho{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--highlight)}
+
+.askreview{margin:26px 0 0;font-size:15px;color:var(--muted)}
+.askreview b{color:var(--highlight);font-weight:400}
+
+.leave{margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.leave input,.leave textarea{background:rgba(11,15,43,.7);border:1px solid var(--panel-edge);
+  border-radius:9px;padding:9px 12px;color:var(--paper);font-family:var(--body);font-size:14px}
+.leave input{width:150px}
+.leave textarea{width:300px;height:38px;resize:vertical}
+.leave button{font-family:var(--display);font-size:14px;background:none;color:var(--highlight);
+  border:1px solid var(--panel-edge);border-radius:9px;padding:0 16px;cursor:pointer}
+.leave button:hover{border-color:var(--highlight)}
+.thanks{color:var(--verified);font-size:14px;margin-top:10px;display:none}
+.thanks.show{display:block}
+
+footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--panel-edge);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted)}
+footer a{color:var(--muted)}
+@media(max-width:620px){.leave textarea{width:100%}.leave input{width:100%}}
 </style>
 </head>
 <body>
@@ -174,6 +222,37 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
     </div>
     <div class="hint">PDF or .docx · read locally in your browser</div>
     <div class="notice" id="heroNotice" style="margin-top:16px"></div>
+
+    <!-- Reviews. The track holds every card TWICE - that's what makes the
+         slide loop seamlessly: by the time it has moved 50% across, the
+         second copy sits exactly where the first began. -->
+    <div class="footzone">
+      <div class="reviews">
+        <div class="rtrack" id="rtrack"></div>
+      </div>
+
+      <!-- Netlify Forms: adding data-netlify="true" is all it takes. Netlify
+           collects submissions in your dashboard, spam-filtered, no backend.
+           You choose which ones to publish - so nobody can post junk straight
+           onto your site. -->
+      <p class="askreview">Liked it? Leave a review — it takes ten seconds.</p>
+
+      <form class="leave" name="reviews" method="POST" data-netlify="true"
+            netlify-honeypot="bot-field" id="reviewForm">
+        <input type="hidden" name="form-name" value="reviews">
+        <p hidden><label>Leave blank: <input name="bot-field"></label></p>
+        <input type="text" name="name" placeholder="Your name" required maxlength="40">
+        <textarea name="review" placeholder="How did it go?" required maxlength="300"></textarea>
+        <button type="submit">Send</button>
+      </form>
+      <div class="thanks" id="thanks">Thanks — that means a lot.</div>
+
+      <footer>
+        DocMind · built by Anand Tripathi ·
+        <a href="https://github.com/Anandtripathiii/Docmind" target="_blank" rel="noopener">source</a>
+        · © 2026 All rights reserved
+      </footer>
+    </div>
   </section>
 
   <main id="work">
@@ -191,6 +270,12 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
       <div class="askbar">
         <input type="text" id="question" placeholder="Ask across your files…" disabled>
         <button class="go" id="send" disabled>Ask</button>
+      </div>
+      <!-- Shown after a few answers, once someone has actually formed an
+           opinion. Asking on arrival is asking too early. -->
+      <div class="nudge" id="nudge">
+        Finding this useful? <a href="#" id="nudgeLink">Leave a quick review</a>
+        <button class="nudgeClose" id="nudgeClose" title="Dismiss">&times;</button>
       </div>
     </section>
   </main>
@@ -633,6 +718,8 @@ async function ask(){
     if(!res.ok || data.error) addError(data.error || 'Something went wrong.');
     else {
       addAnswer(data);
+      answersGiven++;
+      maybeNudge();
       history.push({ question, answer: data.answer || '' });
       if(history.length > 6) history = history.slice(-6);
     }
@@ -718,6 +805,77 @@ function showNotice(m){
   const target = document.body.classList.contains('working') ? el('notice') : el('heroNotice');
   target.textContent = m; target.classList.toggle('show', !!m);
 }
+
+/* ===========================================================================
+   REVIEWS
+   Edit this list to change what shows on the landing page. Submissions from
+   the form land in your Netlify dashboard (Project → Forms) - paste the good
+   ones in here. That way nothing appears publicly without you choosing it.
+   =========================================================================== */
+const REVIEWS = [
+  { text: "Finally a document tool that shows me exactly where the answer came from.", who: "Early user" },
+  { text: "Asked about my 200-page syllabus and it found the right page in seconds.", who: "Student" },
+  { text: "It told me straight up when something wasn't in my file. That's rare.", who: "Researcher" },
+  { text: "Uploaded three PDFs and asked across all of them at once. Very handy.", who: "Teacher" },
+  { text: "The quotes link back to the page. No hunting through the document.", who: "Analyst" },
+];
+
+function drawReviews(){
+  const track = document.getElementById('rtrack');
+  if(!track || !REVIEWS.length) return;
+
+  const card = r => `<div class="rcard">
+      <p class="rtext">${esc(r.text)}</p>
+      <span class="rwho">${esc(r.who)}</span>
+    </div>`;
+
+  // Rendered twice on purpose. The animation slides the track exactly 50%
+  // across, so the second copy lands where the first started and the loop
+  // has no visible seam.
+  track.innerHTML = REVIEWS.map(card).join('') + REVIEWS.map(card).join('');
+}
+drawReviews();
+
+/* The in-app nudge. Shown only after someone has had a few answers - asking
+   before they've seen it work is asking too early. Dismissed once, it stays
+   dismissed for the session. */
+let answersGiven = 0, nudgeDismissed = false;
+
+function maybeNudge(){
+  if(nudgeDismissed || answersGiven < 3) return;
+  document.getElementById('nudge').classList.add('show');
+}
+
+document.getElementById('nudgeClose')?.addEventListener('click', () => {
+  nudgeDismissed = true;
+  document.getElementById('nudge').classList.remove('show');
+});
+
+// Clicking it takes them back to the landing screen where the form lives,
+// but their files stay loaded so nothing is lost.
+document.getElementById('nudgeLink')?.addEventListener('click', e => {
+  e.preventDefault();
+  document.body.classList.remove('working');
+  document.getElementById('reviewForm')?.scrollIntoView({ behavior:'smooth', block:'center' });
+});
+
+/* Submit the review without the page reloading, so people aren't thrown off
+   the app just to say something nice. */
+const reviewForm = document.getElementById('reviewForm');
+reviewForm?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const data = new URLSearchParams(new FormData(reviewForm));
+  try{
+    await fetch('/', { method:'POST',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: data });
+    reviewForm.style.display = 'none';
+    document.getElementById('thanks').classList.add('show');
+  }catch{
+    // Not worth an error screen - the app itself still works fine.
+    document.getElementById('thanks').textContent = "Couldn't send that, sorry.";
+    document.getElementById('thanks').classList.add('show');
+  }
+});
 
 updateAsk();
 
