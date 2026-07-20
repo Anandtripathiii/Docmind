@@ -19,7 +19,11 @@
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--ink);color:var(--paper);font-family:var(--body);
-  font-size:17px;line-height:1.6;overflow:hidden}
+  font-size:17px;line-height:1.6}
+
+/* Landing page scrolls (hero + reviews + footer are taller than a screen).
+   The app itself doesn't - its two panes scroll internally instead. */
+body.working{overflow:hidden;height:100%}
 
 /* ---- drifting background ---- */
 .bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
@@ -35,13 +39,15 @@ body{margin:0;background:var(--ink);color:var(--paper);font-family:var(--body);
 @keyframes sc{to{transform:translateY(34px)}}
 @media(prefers-reduced-motion:reduce){.blob,.rules,.a,#hero{animation:none!important}}
 
-.stage{position:relative;z-index:1;height:100%}
+.stage{position:relative;z-index:1;min-height:100%}
+body.working .stage{height:100%}
 body.working #hero{display:none}
 body:not(.working) #work{display:none}
 
 /* ---- hero ---- */
-#hero{height:100%;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:24px;text-align:center;animation:hero .5s ease-out both}
+#hero{min-height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:40px 24px 56px;text-align:center;
+  animation:hero .5s ease-out both}
 @keyframes hero{from{opacity:0;transform:translateY(12px)}}
 .mark{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
   color:var(--highlight);margin-bottom:18px}
@@ -179,6 +185,12 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
 .rcard .rwho{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--highlight)}
 
+.scrollcue{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted);margin-top:34px;opacity:.7;
+  animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(4px);opacity:.4}}
+@media(prefers-reduced-motion:reduce){.scrollcue{animation:none}}
+
 .seclabel{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
   text-transform:uppercase;color:var(--muted);margin-bottom:12px;text-align:left}
 
@@ -229,6 +241,7 @@ footer a{color:var(--muted)}
       </div>
     </div>
     <div class="hint">PDF or .docx · read locally in your browser</div>
+    <div class="scrollcue" aria-hidden="true">reviews below ↓</div>
     <div class="notice" id="heroNotice" style="margin-top:16px"></div>
 
     <!-- Reviews. The track holds every card TWICE - that's what makes the
@@ -240,18 +253,13 @@ footer a{color:var(--muted)}
         <div class="rtrack" id="rtrack"></div>
       </div>
 
-      <!-- Netlify Forms: adding data-netlify="true" is all it takes. Netlify
-           collects submissions in your dashboard, spam-filtered, no backend.
-           You choose which ones to publish - so nobody can post junk straight
-           onto your site. -->
+      <!-- Posts to /api/reviews, which stores it and returns the updated
+           list. The new review appears in the strip immediately. -->
       <div class="reviewbox">
         <p class="askreview">↓ Liked it? Write your review here — takes ten seconds.</p>
 
-      <form class="leave" name="reviews" method="POST" data-netlify="true"
-            netlify-honeypot="bot-field" id="reviewForm">
-        <input type="hidden" name="form-name" value="reviews">
-        <p hidden><label>Leave blank: <input name="bot-field"></label></p>
-        <input type="text" name="name" placeholder="Your name" required maxlength="40">
+      <form class="leave" id="reviewForm">
+        <input type="text" name="name_" placeholder="Your name" required maxlength="40">
         <textarea name="review" placeholder="Write your review…" required maxlength="300"></textarea>
         <button type="submit">Send</button>
       </form>
@@ -819,21 +827,22 @@ function showNotice(m){
 
 /* ===========================================================================
    REVIEWS
-   Edit this list to change what shows on the landing page. Submissions from
-   the form land in your Netlify dashboard (Project → Forms) - paste the good
-   ones in here. That way nothing appears publicly without you choosing it.
+   Stored by /api/reviews. The ten newest are shown; older ones move to an
+   archive rather than being deleted. A new review appears immediately, without
+   a page reload.
    =========================================================================== */
-const REVIEWS = [
-  { text: "Finally a document tool that shows me exactly where the answer came from.", who: "Early user" },
-  { text: "Asked about my 200-page syllabus and it found the right page in seconds.", who: "Student" },
-  { text: "It told me straight up when something wasn't in my file. That's rare.", who: "Researcher" },
-  { text: "Uploaded three PDFs and asked across all of them at once. Very handy.", who: "Teacher" },
-  { text: "The quotes link back to the page. No hunting through the document.", who: "Analyst" },
+
+// Shown only until the first real review arrives, so the strip isn't empty on
+// a brand-new site.
+const PLACEHOLDER = [
+  { text: "Be the first to leave a review.", who: "DocMind" },
 ];
 
-function drawReviews(){
+function drawReviews(list){
   const track = document.getElementById('rtrack');
-  if(!track || !REVIEWS.length) return;
+  if(!track) return;
+
+  const reviews = (list && list.length) ? list : PLACEHOLDER;
 
   const card = r => `<div class="rcard">
       <p class="rtext">${esc(r.text)}</p>
@@ -841,50 +850,62 @@ function drawReviews(){
     </div>`;
 
   // Rendered twice on purpose. The animation slides the track exactly 50%
-  // across, so the second copy lands where the first started and the loop
-  // has no visible seam.
-  track.innerHTML = REVIEWS.map(card).join('') + REVIEWS.map(card).join('');
-}
-drawReviews();
+  // across, so the second copy lands where the first started and the loop has
+  // no visible seam.
+  const cards = reviews.map(card).join('');
+  track.innerHTML = cards + cards;
 
-/* The in-app nudge. Shown only after someone has had a few answers - asking
-   before they've seen it work is asking too early. Dismissed once, it stays
-   dismissed for the session. */
-let answersGiven = 0, nudgeDismissed = false;
-
-function maybeNudge(){
-  if(nudgeDismissed || answersGiven < 3) return;
-  document.getElementById('nudge').classList.add('show');
+  // Fewer cards need to travel less distance to loop, or a single review
+  // would crawl across the screen for half a minute.
+  track.style.animationDuration = Math.max(14, reviews.length * 6) + 's';
 }
 
-document.getElementById('nudgeClose')?.addEventListener('click', () => {
-  nudgeDismissed = true;
-  document.getElementById('nudge').classList.remove('show');
-});
+async function loadReviews(){
+  try{
+    const res = await fetch('/api/reviews');
+    const data = await res.json();
+    drawReviews(data.reviews);
+  }catch{
+    drawReviews(null);        // storage unavailable - show the placeholder
+  }
+}
+loadReviews();
 
-// Clicking it takes them back to the landing screen where the form lives,
-// but their files stay loaded so nothing is lost.
-document.getElementById('nudgeLink')?.addEventListener('click', e => {
-  e.preventDefault();
-  document.body.classList.remove('working');
-  document.getElementById('reviewForm')?.scrollIntoView({ behavior:'smooth', block:'center' });
-});
-
-/* Submit the review without the page reloading, so people aren't thrown off
-   the app just to say something nice. */
+/* Submitting adds the review and redraws the strip straight away, so people
+   can see their own words land. */
 const reviewForm = document.getElementById('reviewForm');
 reviewForm?.addEventListener('submit', async e => {
   e.preventDefault();
-  const data = new URLSearchParams(new FormData(reviewForm));
+
+  const name = reviewForm.name_.value.trim();
+  const review = reviewForm.review.value.trim();
+  if(!name || !review) return;
+
+  const btn = reviewForm.querySelector('button');
+  btn.disabled = true; btn.textContent = 'Sending…';
+
   try{
-    await fetch('/', { method:'POST',
-      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: data });
+    const res = await fetch('/api/reviews', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, review })
+    });
+    const data = await res.json();
+
+    if(!res.ok || data.error) throw new Error(data.error || 'could not save');
+
+    drawReviews(data.reviews);              // their review is now in the strip
     reviewForm.style.display = 'none';
-    document.getElementById('thanks').classList.add('show');
-  }catch{
-    // Not worth an error screen - the app itself still works fine.
-    document.getElementById('thanks').textContent = "Couldn't send that, sorry.";
-    document.getElementById('thanks').classList.add('show');
+    const thanks = document.getElementById('thanks');
+    thanks.textContent = data.duplicate
+      ? "You've already left that one — thank you."
+      : 'Thanks — your review is up there now.';
+    thanks.classList.add('show');
+
+  }catch(err){
+    btn.disabled = false; btn.textContent = 'Send';
+    const thanks = document.getElementById('thanks');
+    thanks.textContent = "Couldn't save that, sorry. " + (err.message || '');
+    thanks.classList.add('show');
   }
 });
 

@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Ask questions about your PDFs and Word files, with every quote verified against the source",
   "private": true,
-  "scripts": {
-    "dev": "netlify dev"
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
   }
 }
