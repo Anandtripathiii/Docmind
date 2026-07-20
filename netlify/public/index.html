@@ -457,7 +457,13 @@ async function load(file){
     row.stats = `${pages.length} pages · ${row.chunks.length} sections`
               + (row.vectors ? '' : ' · keyword search');
     drawTabs(); updateAsk();
-    if(previewing === row.uid && !row.isPdf) showPreview(row.uid);
+
+    // Refresh the preview now that the text exists.
+    // This used to skip PDFs, because on desktop a PDF renders straight from
+    // the blob and needs nothing else. But on a phone we show the EXTRACTED
+    // TEXT instead - and that only exists once parsing has finished. Skipping
+    // the refresh left mobile stuck on "Still reading" forever.
+    if(previewing === row.uid) showPreview(row.uid);
 
   }catch(err){
     files = files.filter(f => f !== row);
@@ -714,6 +720,18 @@ function showNotice(m){
 }
 
 updateAsk();
+
+// Rotating a phone, or resizing a window past the breakpoint, changes whether
+// the PDF viewer or the text fallback should be showing. Redraw when that
+// happens instead of leaving the wrong one on screen.
+let lastSmall = window.matchMedia('(max-width: 980px)').matches;
+window.addEventListener('resize', () => {
+  const nowSmall = window.matchMedia('(max-width: 980px)').matches;
+  if(nowSmall !== lastSmall){
+    lastSmall = nowSmall;
+    if(previewing) showPreview(previewing);
+  }
+});
 </script>
 </body>
 </html>
