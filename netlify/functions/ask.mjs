@@ -158,7 +158,20 @@ export default async (request) => {
 
     if (res.status === 429) return json({ error: "Free tier limit reached. Try again in a minute." }, 429);
     if (res.status === 404) return json({ error: `Model "${MODEL}" not found. Set GEMINI_MODEL in Netlify.` }, 502);
-    if (!res.ok) return json({ error: `Gemini returned ${res.status}.` }, 502);
+
+    if (!res.ok) {
+      // Show WHAT Gemini objected to. A bare status number tells you nothing -
+      // you can't tell a bad model name from a malformed request from a
+      // blocked key. The response body says exactly which it is.
+      let why = "";
+      try {
+        const body = await res.json();
+        why = body?.error?.message || "";
+      } catch {
+        why = (await res.text().catch(() => "")).slice(0, 200);
+      }
+      return json({ error: `Gemini ${res.status}: ${why || "no detail given"}` }, 502);
+    }
 
     data = await res.json();
   } catch (err) {

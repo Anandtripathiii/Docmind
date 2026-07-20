@@ -16,7 +16,11 @@
  * not a requirement.
  */
 
-const MODEL = process.env.EMBED_MODEL || "gemini-embedding-001";
+// Google renames embedding models fairly often, and a name that works on one
+// account 404s on another. Rather than guess once and fail, try each in turn.
+const MODELS = process.env.EMBED_MODEL
+  ? [process.env.EMBED_MODEL]
+  : ["gemini-embedding-001", "text-embedding-004", "embedding-001"];
 const VERSION = process.env.GEMINI_API_VERSION || "v1beta";
 
 // Gemini accepts a batch of texts per call. Keeping batches modest keeps us
@@ -39,37 +43,46 @@ export default async (request) => {
   // is told which role the text is playing so the two match up better.
   const taskType = body.isQuery ? "RETRIEVAL_QUERY" : "RETRIEVAL_DOCUMENT";
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/${VERSION}/models/${MODEL}:batchEmbedContents`,
-      {
-        method: "POST",
-        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requests: texts.map((t) => ({
-            model: `models/${MODEL}`,
-            content: { parts: [{ text: String(t).slice(0, 8000) }] },
-            taskType,
-            outputDimensionality: 768,
-          })),
-        }),
+  const problems = [];
+
+  for (const model of MODELS) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/${VERSION}/models/${model}:batchEmbedContents`,
+        {
+          method: "POST",
+          headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requests: texts.map((t) => ({
+              model: `models/${model}`,
+              content: { parts: [{ text: String(t).slice(0, 8000) }] },
+              taskType,
+            })),
+          }),
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const vectors = (data.embeddings || []).map((e) => e.values);
+        if (vectors.length) return json({ vectors, model });
+        problems.push(`${model}: empty response`);
+        continue;
       }
-    );
 
-    if (!res.ok) {
-      // Don't dress this up as success. The frontend checks for `error` and
-      // quietly switches to keyword search.
-      const detail = await res.text();
-      return json({ error: `Embedding failed (${res.status})`, detail: detail.slice(0, 200) }, 502);
+      // Record why this one failed and try the next name.
+      let why = "";
+      try { why = (await res.json())?.error?.message || ""; } catch { /* ignore */ }
+      problems.push(`${model}: ${res.status} ${why.slice(0, 120)}`);
+
+    } catch (err) {
+      problems.push(`${model}: ${err.message}`);
     }
-
-    const data = await res.json();
-    const vectors = (data.embeddings || []).map((e) => e.values);
-
-    return json({ vectors });
-  } catch (err) {
-    return json({ error: "Couldn't reach the embedding service." }, 502);
   }
+
+  // Every name failed. Say which and why - the frontend falls back to keyword
+  // search either way, but now you can see what to fix.
+  return json({ error: "Embedding unavailable", detail: problems.join(" | ") }, 502);
 };
 
 const json = (obj, status = 200) =>

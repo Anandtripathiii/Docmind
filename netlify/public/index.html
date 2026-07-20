@@ -369,7 +369,11 @@ async function embed(texts, isQuery = false){
     body: JSON.stringify({ texts, isQuery })
   });
   const data = await res.json();
-  if(!res.ok || data.error) throw new Error(data.error || "embed failed");
+  if(!res.ok || data.error){
+    // detail lists what each model name returned, which is what you need to
+    // know to fix it.
+    throw new Error(data.detail || data.error || "embed failed");
+  }
   return data.vectors;
 }
 
@@ -434,9 +438,12 @@ async function load(file){
     drawTabs();
     updateAsk();
 
-    // Meaning-search is an upgrade. If it fails, carry on with keywords.
+    // Meaning-search is an upgrade. If it fails, carry on with keywords -
+    // but say WHY, so a fixable problem doesn't look like normal behaviour.
     try { row.vectors = await embedAll(row); }
-    catch(err){ showNotice("Meaning-search unavailable, using keyword search."); }
+    catch(err){
+      showNotice("Keyword search only — " + (err.message || "embedding unavailable"));
+    }
 
     row.ready = true;
     row.stats = `${pages.length} pages · ${row.chunks.length} sections`
