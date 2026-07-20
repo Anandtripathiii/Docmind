@@ -199,7 +199,9 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
 
 .scrollcue{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
   text-transform:uppercase;color:var(--muted);margin-top:34px;opacity:.7;
+  background:none;border:none;cursor:pointer;padding:6px;
   animation:bob 2.4s ease-in-out infinite}
+.scrollcue:hover{color:var(--highlight);opacity:1}
 @keyframes bob{50%{transform:translateY(4px);opacity:.4}}
 @media(prefers-reduced-motion:reduce){.scrollcue{animation:none}}
 
@@ -257,7 +259,7 @@ footer a{color:var(--muted)}
       </div>
     </div>
     <div class="hint">PDF or .docx · read locally in your browser</div>
-    <div class="scrollcue" aria-hidden="true">reviews below ↓</div>
+    <button class="scrollcue" id="scrollcue">reviews below ↓</button>
     <div class="notice" id="heroNotice" style="margin-top:16px"></div>
 
     <!-- Reviews. The track holds every card TWICE - that's what makes the
@@ -882,6 +884,43 @@ function drawReviews(list){
   const totalCards = reviews.length * perSet;
   track.style.animationDuration = Math.max(18, totalCards * 5) + 's';
 }
+
+/* Scroll down to the reviews. Used by the cue on the landing page and by the
+   nudge inside the app - both should land in the same place. */
+function goToReviews(focusBox){
+  document.querySelector('.footzone')
+    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Put the cursor in the box only when someone came here to write, not when
+  // they just wanted to read what others said.
+  if(focusBox){
+    setTimeout(() => document.querySelector('.leave textarea')?.focus(), 500);
+  }
+}
+
+document.getElementById('scrollcue')?.addEventListener('click', () => goToReviews(false));
+
+/* The in-app nudge. Shown only after a few answers - asking before someone
+   has seen it work is asking too early. Dismissed once, it stays dismissed. */
+let answersGiven = 0, nudgeDismissed = false;
+
+function maybeNudge(){
+  if(nudgeDismissed || answersGiven < 3) return;
+  document.getElementById('nudge')?.classList.add('show');
+}
+
+document.getElementById('nudgeClose')?.addEventListener('click', () => {
+  nudgeDismissed = true;
+  document.getElementById('nudge')?.classList.remove('show');
+});
+
+document.getElementById('nudgeLink')?.addEventListener('click', e => {
+  e.preventDefault();
+  document.body.classList.remove('working');   // back to the landing screen
+  // Wait a frame for that layout switch, or the scroll target isn't in place
+  // yet and the page jumps to the wrong spot.
+  requestAnimationFrame(() => goToReviews(true));
+});
 
 async function loadReviews(){
   try{
