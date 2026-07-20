@@ -15,7 +15,9 @@
  * This is the same anti-hallucination idea as the Python version, just moved.
  */
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// flash-lite by default: faster and less busy than full flash, which matters
+// when the function is killed after ~10 seconds. Override with GEMINI_MODEL.
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 const VERSION = process.env.GEMINI_API_VERSION || "v1beta";
 
 const SYSTEM_PROMPT = `You answer questions about a document the user uploaded.
@@ -139,9 +141,15 @@ export default async (request) => {
     `-----------------------------------\n\nQUESTION: ${question}`;
 
   // --- call Gemini -------------------------------------------------------
-  let data;
+  // A 503 means Google's servers are busy, not that anything is wrong with the
+  // request. Those clear in a second or two, so retry rather than handing the
+  // user an error they can do nothing about.
+  let data, res;
+  const MAX_TRIES = 3;
+
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
   try {
-    const res = await fetch(
+    res = await fetch(
       `https://generativelanguage.googleapis.com/${VERSION}/models/${MODEL}:generateContent`,
       {
         method: "POST",
@@ -166,6 +174,13 @@ export default async (request) => {
       }
     );
 
+    // Busy? Wait a moment and try again. Waiting longer each time avoids
+    // hammering a server that's already struggling.
+    if (res.status === 503 && attempt < MAX_TRIES) {
+      await new Promise((r) => setTimeout(r, attempt * 700));
+      continue;
+    }
+
     if (res.status === 429) return json({ error: "Free tier limit reached. Try again in a minute." }, 429);
     if (res.status === 404) return json({ error: `Model "${MODEL}" not found. Set GEMINI_MODEL in Netlify.` }, 502);
 
@@ -184,9 +199,15 @@ export default async (request) => {
     }
 
     data = await res.json();
+    break;                    // got an answer, stop retrying
+
   } catch (err) {
-    return json({ error: "Couldn't reach Gemini." }, 502);
+    if (attempt === MAX_TRIES) return json({ error: "Couldn't reach Gemini." }, 502);
+    await new Promise((r) => setTimeout(r, attempt * 700));
   }
+  }
+
+  if (!data) return json({ error: "Gemini is busy right now. Try again in a moment." }, 503);
 
   // Newer models return their "thinking" as a separate part. Skip those parts,
   // or we'd try to parse the reasoning as JSON and fail.
