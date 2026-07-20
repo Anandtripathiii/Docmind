@@ -179,7 +179,15 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
 .rcard .rwho{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--highlight)}
 
-.askreview{margin:26px 0 0;font-size:15px;color:var(--muted)}
+.seclabel{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:12px;text-align:left}
+
+/* A bordered box so the form reads as "write here", not as loose text. */
+.reviewbox{margin-top:22px;padding:16px;border:1px dashed var(--panel-edge);
+  border-radius:14px;background:rgba(255,209,102,.03)}
+.reviewbox:hover{border-color:var(--highlight)}
+
+.askreview{margin:0 0 4px;font-size:15px;color:var(--muted)}
 .askreview b{color:var(--highlight);font-weight:400}
 
 .leave{margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
@@ -227,6 +235,7 @@ footer a{color:var(--muted)}
          slide loop seamlessly: by the time it has moved 50% across, the
          second copy sits exactly where the first began. -->
     <div class="footzone">
+      <div class="seclabel">What people say</div>
       <div class="reviews">
         <div class="rtrack" id="rtrack"></div>
       </div>
@@ -235,17 +244,19 @@ footer a{color:var(--muted)}
            collects submissions in your dashboard, spam-filtered, no backend.
            You choose which ones to publish - so nobody can post junk straight
            onto your site. -->
-      <p class="askreview">Liked it? Leave a review — it takes ten seconds.</p>
+      <div class="reviewbox">
+        <p class="askreview">↓ Liked it? Write your review here — takes ten seconds.</p>
 
       <form class="leave" name="reviews" method="POST" data-netlify="true"
             netlify-honeypot="bot-field" id="reviewForm">
         <input type="hidden" name="form-name" value="reviews">
         <p hidden><label>Leave blank: <input name="bot-field"></label></p>
         <input type="text" name="name" placeholder="Your name" required maxlength="40">
-        <textarea name="review" placeholder="How did it go?" required maxlength="300"></textarea>
+        <textarea name="review" placeholder="Write your review…" required maxlength="300"></textarea>
         <button type="submit">Send</button>
       </form>
-      <div class="thanks" id="thanks">Thanks — that means a lot.</div>
+        <div class="thanks" id="thanks">Thanks — that means a lot.</div>
+      </div>
 
       <footer>
         DocMind · built by Anand Tripathi ·
