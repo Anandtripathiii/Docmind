@@ -92,6 +92,10 @@ h1 em{font-style:normal;background:linear-gradient(transparent 60%,rgba(255,209,
   text-transform:uppercase;color:var(--highlight);margin:22px 0 8px;padding-bottom:5px;
   border-bottom:1px solid var(--panel-edge)}
 .textview p{margin:0 0 12px;font-size:15px}
+.openpdf{display:inline-block;font-family:var(--display);font-size:13px;
+  color:var(--highlight);border:1px solid var(--panel-edge);border-radius:9px;
+  padding:7px 12px;text-decoration:none;margin-bottom:6px}
+.openpdf:hover{border-color:var(--highlight)}
 .previewEmpty{height:100%;display:flex;align-items:center;justify-content:center;
   color:var(--muted);font-size:15px;text-align:center;padding:30px}
 
@@ -415,7 +419,11 @@ async function loadMany(list){ for(const f of list) await load(f); }
 
 async function load(file){
   showNotice('');
-  const isPdf = file.name.toLowerCase().endsWith('.pdf');
+  // Phones frequently give a file no extension - picked from Drive, a share
+  // sheet, or a camera scan. So check the MIME type too, or a perfectly good
+  // PDF gets sent down the Word path and fails.
+  const isPdf = file.name.toLowerCase().endsWith('.pdf')
+             || file.type === 'application/pdf';
 
   const row = {
     uid: nextUid++, filename: file.name, stats: 'Reading…', on: true, ready: false,
@@ -511,23 +519,39 @@ function showPreview(uid, page){
   const pane = el('preview');
   if(!f) return clearPreview();
 
-  if(f.isPdf && f.url){
-    // The browser's own PDF viewer understands #page=N, so a citation can
-    // drop you straight on the right page.
+  // Phones and tablets can't render a PDF inside an iframe - the pane just
+  // comes out blank. We already have the text from pdf.js, so show that
+  // instead, with a button to open the real PDF in the phone's own viewer.
+  const smallScreen = window.matchMedia('(max-width: 980px)').matches;
+
+  if(f.isPdf && f.url && !smallScreen){
+    // Desktop: the browser's PDF viewer understands #page=N, so a citation
+    // can drop you straight on the right page.
     const jump = page ? `#page=${page}&view=FitH` : '#view=FitH';
     pane.innerHTML = `<iframe src="${f.url}${jump}"></iframe>`;
     return;
   }
 
-  if(!f.pages){ pane.innerHTML = `<div class="previewEmpty">Still reading…</div>`; return; }
+  if(!f.pages){
+    pane.innerHTML = `<div class="previewEmpty">Still reading this file…</div>`;
+    return;
+  }
 
   let html = '<div class="textview">';
+
+  if(f.isPdf && f.url){
+    html += `<a class="openpdf" href="${f.url}" target="_blank" rel="noopener">
+               Open the original PDF ↗</a>`;
+  }
+
   f.pages.forEach(p => {
     html += `<div class="pagemark" data-page="${p.page}">Page ${p.page}</div>`;
     p.text.split(/\n+/).filter(Boolean).forEach(line => html += `<p>${esc(line)}</p>`);
   });
   pane.innerHTML = html + '</div>';
 
+  // Clicking a citation should land you on that page here too, not just in
+  // the desktop PDF viewer.
   if(page){
     const m = pane.querySelector(`[data-page="${page}"]`);
     if(m) m.scrollIntoView({ behavior:'smooth', block:'start' });
