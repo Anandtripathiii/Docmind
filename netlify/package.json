@@ -1,0 +1,10 @@
+{
+  "name": "docmind",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Ask questions about your PDFs and Word files, with every quote verified against the source",
+  "private": true,
+  "scripts": {
+    "dev": "netlify dev"
+  }
+}

@@ -1,0 +1,25 @@
+# NOTE ON VERSIONS
+# These use ">=" instead of "==" on purpose. Pinning exact versions forces pip
+# to compile packages from source when your Python version is newer than the
+# pinned release - which fails unless you have a C++ compiler installed.
+# Ranges let pip grab a ready-built version that matches your Python.
+#
+# RECOMMENDED PYTHON: 3.11 or 3.12. Very new versions (3.13+) often have no
+# ready-built packages yet for numpy and torch.
+
+# ---- web server ----
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9   # lets FastAPI accept file uploads
+
+# ---- reading files ----
+pypdf>=4.0                # PDF text
+python-docx>=1.1          # Word text
+
+# ---- the "understanding" part (RAG) - free, runs on your machine ----
+sentence-transformers>=3.0    # text -> vectors (no key, no cost)
+numpy>=1.26                   # math for comparing vectors
+
+# ---- talking to your AI provider ----
+requests>=2.31            # one HTTP library for all three providers
+python-dotenv>=1.0        # loads settings from .env

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocMind — ask your documents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0B0F2B; --panel:#141A44; --panel-edge:#262E63; --paper:#ECEAFB;
+  --muted:#8D93C4; --highlight:#FFD166; --verified:#63E6BE; --warn:#FF8FA3;
+  --display:'Space Grotesk',system-ui,sans-serif;
+  --body:'Source Serif 4',Georgia,serif;
+  --mono:'JetBrains Mono',monospace;
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ink);color:var(--paper);font-family:var(--body);
+  font-size:17px;line-height:1.6;overflow:hidden}
+
+/* ---- drifting background ---- */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.40}
+.blob.one{width:46vw;height:46vw;background:#3A2E8F;top:-12vw;left:-8vw;animation:d1 26s ease-in-out infinite}
+.blob.two{width:38vw;height:38vw;background:#0E5C6B;bottom:-14vw;right:-6vw;animation:d2 32s ease-in-out infinite}
+.blob.three{width:30vw;height:30vw;background:#7A4E1E;top:38%;left:52%;animation:d3 38s ease-in-out infinite}
+@keyframes d1{50%{transform:translate(9vw,7vh) scale(1.12)}}
+@keyframes d2{50%{transform:translate(-8vw,-6vh) scale(1.08)}}
+@keyframes d3{50%{transform:translate(-6vw,8vh) scale(.9)}}
+.rules{position:absolute;inset:-50% 0;background:repeating-linear-gradient(to bottom,
+  rgba(236,234,251,.045) 0 1px,transparent 1px 34px);animation:sc 40s linear infinite}
+@keyframes sc{to{transform:translateY(34px)}}
+@media(prefers-reduced-motion:reduce){.blob,.rules,.a,#hero{animation:none!important}}
+
+.stage{position:relative;z-index:1;height:100%}
+body.working #hero{display:none}
+body:not(.working) #work{display:none}
+
+/* ---- hero ---- */
+#hero{height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:24px;text-align:center;animation:hero .5s ease-out both}
+@keyframes hero{from{opacity:0;transform:translateY(12px)}}
+.mark{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--highlight);margin-bottom:18px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(32px,6vw,60px);
+  line-height:1.05;margin:0 0 16px;max-width:16ch}
+h1 em{font-style:normal;background:linear-gradient(transparent 60%,rgba(255,209,102,.42) 60%);padding:0 6px}
+.sub{color:var(--muted);max-width:46ch;margin:0 0 38px}
+.composer{width:100%;max-width:680px;background:rgba(20,26,68,.80);
+  border:1px solid var(--panel-edge);border-radius:18px;padding:14px;backdrop-filter:blur(10px);
+  transition:border-color .2s,background .2s}
+.composer.over{border-color:var(--highlight);background:rgba(255,209,102,.07)}
+.composer-row{display:flex;gap:10px;align-items:center}
+.attach{width:42px;height:42px;flex-shrink:0;border-radius:11px;border:1px solid var(--panel-edge);
+  background:rgba(11,15,43,.6);color:var(--paper);font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.attach:hover{border-color:var(--highlight);color:var(--highlight)}
+.hint{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin-top:12px}
+
+/* ---- working layout ---- */
+#work{height:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;padding:18px}
+@media(max-width:980px){#work{grid-template-columns:1fr;grid-template-rows:40vh 1fr}}
+.pane{min-height:0;display:flex;flex-direction:column;background:rgba(20,26,68,.72);
+  border:1px solid var(--panel-edge);border-radius:var(--radius);backdrop-filter:blur(10px);overflow:hidden}
+
+.tabs{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--panel-edge);
+  overflow-x:auto;flex-shrink:0}
+.tab{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;
+  border:1px solid var(--panel-edge);background:rgba(11,15,43,.5);cursor:pointer;
+  white-space:nowrap;flex-shrink:0;transition:border-color .2s,background .2s,opacity .2s}
+.tab.active{border-color:var(--highlight);background:rgba(255,209,102,.09)}
+.tab.excluded{opacity:.40}
+.tab input{accent-color:var(--highlight);cursor:pointer;margin:0}
+.tab .name{font-family:var(--display);font-size:13px;max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.tab .working{width:7px;height:7px;border-radius:50%;background:var(--highlight);
+  animation:pulse 1.1s ease-in-out infinite;flex-shrink:0}
+@keyframes pulse{50%{opacity:.25}}
+.tab .kill{border:none;background:none;color:var(--muted);font-size:15px;cursor:pointer}
+.tab .kill:hover{color:var(--warn)}
+.addfile{border:1px dashed var(--panel-edge);background:none;color:var(--muted);
+  border-radius:10px;padding:7px 12px;font-family:var(--display);font-size:13px;cursor:pointer;flex-shrink:0}
+.addfile:hover{border-color:var(--highlight);color:var(--highlight)}
+
+.preview{flex:1;min-height:0;background:rgba(11,15,43,.35)}
+.preview iframe{width:100%;height:100%;border:0;display:block}
+.textview{height:100%;overflow-y:auto;padding:22px 24px}
+.textview .pagemark{font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--highlight);margin:22px 0 8px;padding-bottom:5px;
+  border-bottom:1px solid var(--panel-edge)}
+.textview p{margin:0 0 12px;font-size:15px}
+.previewEmpty{height:100%;display:flex;align-items:center;justify-content:center;
+  color:var(--muted);font-size:15px;text-align:center;padding:30px}
+
+.thread{flex:1;min-height:0;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:22px}
+.empty{margin:auto;color:var(--muted);font-size:15px;text-align:center;max-width:34ch}
+.q{font-family:var(--display);font-weight:500;font-size:19px;line-height:1.35;
+  padding-left:15px;border-left:3px solid var(--highlight)}
+.q .qtag{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.a{background:rgba(11,15,43,.5);border:1px solid var(--panel-edge);border-radius:var(--radius);
+  padding:20px;animation:rise .35s ease-out both}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+.badge{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;padding:5px 11px;border-radius:999px;margin-bottom:12px}
+.badge.document{background:rgba(99,230,190,.13);color:var(--verified);border:1px solid rgba(99,230,190,.3)}
+.badge.partial{background:rgba(255,209,102,.13);color:var(--highlight);border:1px solid rgba(255,209,102,.3)}
+.badge.general{background:rgba(255,143,163,.13);color:var(--warn);border:1px solid rgba(255,143,163,.3)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.answer p{margin:0 0 12px}
+.explain{margin-top:16px;padding:15px 17px;border-radius:11px;background:rgba(255,255,255,.035);
+  border-left:2px solid var(--panel-edge);font-size:16px}
+.label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.missing{margin-top:14px;font-size:15px;color:var(--warn)}
+.slips{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.slip{background:rgba(255,209,102,.07);border-left:3px solid var(--highlight);
+  border-radius:0 9px 9px 0;padding:11px 14px;font-size:15px}
+.slip .page{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--highlight);display:block;margin-bottom:5px}
+.slip .page[data-doc]{cursor:pointer}
+.slip .page[data-doc]:hover{text-decoration:underline}
+details{margin-top:16px}
+summary{cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted)}
+.raw{margin-top:10px;font-size:14px;color:var(--muted);border-top:1px solid var(--panel-edge);padding-top:10px}
+.raw .jump{cursor:pointer;color:var(--highlight)}
+
+.askbar{flex-shrink:0;display:flex;gap:10px;padding:14px;border-top:1px solid var(--panel-edge);
+  background:rgba(11,15,43,.45)}
+input[type=text]{flex:1;min-width:0;background:rgba(11,15,43,.7);border:1px solid var(--panel-edge);
+  border-radius:11px;padding:13px 15px;color:var(--paper);font-family:var(--body);font-size:16px}
+input[type=text]::placeholder{color:#6C72A4}
+input[type=text]:focus,button:focus-visible{outline:2px solid var(--highlight);outline-offset:2px}
+button.go{font-family:var(--display);font-weight:500;font-size:15px;background:var(--highlight);
+  color:#241A00;border:none;border-radius:11px;padding:0 22px;cursor:pointer}
+button.go:disabled{opacity:.45;cursor:not-allowed}
+.thinking{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.thinking::after{content:'';animation:dots 1.2s steps(4,end) infinite}
+@keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+.notice{padding:10px 14px;margin:0 14px 12px;border-radius:10px;background:rgba(255,143,163,.1);
+  border:1px solid rgba(255,143,163,.3);color:var(--warn);font-size:14px;display:none}
+.notice.show{display:block}
+#file{display:none}
+</style>
+</head>
+<body>
+
+<div class="bg" aria-hidden="true">
+  <div class="rules"></div><div class="blob one"></div><div class="blob two"></div><div class="blob three"></div>
+</div>
+
+<input type="file" id="file" accept=".pdf,.docx" multiple>
+
+<div class="stage">
+  <section id="hero">
+    <div class="mark">Document Q&amp;A</div>
+    <h1>What are we <em>reading</em> today?</h1>
+    <p class="sub">Drop in a PDF or Word file and ask about it. Your files are read
+      in this browser and never uploaded anywhere.</p>
+    <div class="composer" id="composer">
+      <div class="composer-row">
+        <button class="attach" id="heroAttach" title="Add a file">+</button>
+        <input type="text" id="heroInput" placeholder="Add a file to start asking…" disabled>
+        <button class="go" id="heroGo" disabled>Ask</button>
+      </div>
+    </div>
+    <div class="hint">PDF or .docx · read locally in your browser</div>
+    <div class="notice" id="heroNotice" style="margin-top:16px"></div>
+  </section>
+
+  <main id="work">
+    <section class="pane">
+      <div class="tabs" id="tabs"></div>
+      <div class="preview" id="preview">
+        <div class="previewEmpty">Select a file above to read it here.</div>
+      </div>
+    </section>
+    <section class="pane">
+      <div class="thread" id="thread">
+        <div class="empty" id="empty">Ask anything about the ticked files.</div>
+      </div>
+      <div class="notice" id="notice"></div>
+      <div class="askbar">
+        <input type="text" id="question" placeholder="Ask across your files…" disabled>
+        <button class="go" id="send" disabled>Ask</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+/* ===========================================================================
+   EVERYTHING BELOW RUNS IN YOUR BROWSER.
+
+   Reading the PDF, cutting it into pieces, and searching those pieces all
+   happen on this machine. Only two things ever leave it:
+     1. the text of a few matching sections, sent to /api/ask
+     2. the same text sent once to /api/embed to be turned into vectors
+
+   Your file itself is never uploaded, and nothing is stored on any server.
+   =========================================================================== */
+
+import * as pdfjs from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs";
+pdfjs.GlobalWorkerOptions.workerSrc =
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs";
+
+const el = id => document.getElementById(id);
+let files = [], history = [], previewing = null, nextUid = 1;
+
+/* ===========================================================================
+   1. READING FILES  (was reader.py)
+   =========================================================================== */
+
+async function readPdf(file){
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const pages = [];
+
+  for(let n = 1; n <= doc.numPages; n++){
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
+    // pdf.js gives back positioned text fragments; join them into a line.
+    const text = content.items.map(i => i.str).join(" ")
+                        .replace(/\s+/g, " ").trim();
+    if(text) pages.push({ page: n, text });
+  }
+  return pages;
+}
+
+async function readDocx(file){
+  // mammoth converts Word XML to plain text. Loaded only when needed, so a
+  // PDF-only visitor never downloads it.
+  const mammoth = await import("https://cdn.jsdelivr.net/npm/mammoth@1.8.0/+esm");
+  const buf = await file.arrayBuffer();
+  const { value } = await mammoth.extractRawText({ arrayBuffer: buf });
+
+  // Word has no real pages, so group every 25 paragraphs into one "page".
+  const blocks = value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  const pages = [];
+  for(let i = 0; i < blocks.length; i += 25){
+    pages.push({ page: Math.floor(i/25) + 1, text: blocks.slice(i, i+25).join("\n") });
+  }
+  return pages;
+}
+
+/* ===========================================================================
+   2. CUTTING IT UP  (was chunker.py)
+   Small overlapping pieces, cut on sentence ends so no word is split.
+   =========================================================================== */
+
+const CHUNK_SIZE = 900, OVERLAP = 150;
+
+function chunkPages(pages, filename){
+  const chunks = [];
+  let id = 0;
+
+  for(const p of pages){
+    const sentences = p.text.split(/(?<=[.!?])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+    let current = "";
+
+    for(const s of sentences){
+      if(current.length + s.length + 1 > CHUNK_SIZE && current){
+        chunks.push({ id: id++, page: p.page, filename, text: current.trim() });
+        current = current.slice(-OVERLAP) + " " + s;   // keep an overlap
+      } else {
+        current = (current + " " + s).trim();
+      }
+    }
+    if(current.trim()) chunks.push({ id: id++, page: p.page, filename, text: current.trim() });
+  }
+  return chunks;
+}
+
+/* ===========================================================================
+   3. SEARCHING  (was store.py)
+   Two scores added together:
+     MEANING  - how close two vectors point (catches synonyms)
+     KEYWORD  - shared words (catches codes like "BS-103" that vectors miss)
+   =========================================================================== */
+
+const STOP = new Set(["the","a","an","is","are","was","were","of","to","in","on","for","and",
+  "or","it","this","that","what","which","who","how","why","does","do","did","with","from",
+  "by","as","at","be","can","will","about","tell","me","please","explain"]);
+
+// Chop common endings so "dog" matches "dogs" - without this, a question about
+// a dog scores zero against a document that says dogs.
+function stem(w){
+  for(const end of ["ing","ies","es","ed","s"]){
+    if(w.endsWith(end) && w.length - end.length >= 3) return w.slice(0, -end.length);
+  }
+  return w;
+}
+const words = t => new Set((t.toLowerCase().match(/[a-z0-9]+/g) || [])
+  .filter(w => !STOP.has(w) && w.length > 2).map(stem));
+
+function keywordScore(q, text){
+  const qw = words(q); if(!qw.size) return 0;
+  const tw = words(text);
+  let hits = 0; for(const w of qw) if(tw.has(w)) hits++;
+  return hits / qw.size;
+}
+
+const dot = (a,b) => { let s=0; for(let i=0;i<a.length;i++) s += a[i]*b[i]; return s; };
+
+/* Multi-part questions: "what is X and what's the syllabus for Y" is really
+   two questions. Searched as one, the topics blur together and neither is
+   found well. Split, search each, then take turns picking results so one
+   topic can't crowd out the other. */
+function splitQuestion(q){
+  const parts = q.split(/\?|\band what'?s?\b|\bwhat about\b|\band tell me\b|\band also\b|;/i)
+                 .map(s => s.trim().replace(/^[,.\-\s]+|[,.\-\s]+$/g, ""))
+                 .filter(s => s.split(/\s+/).length >= 2 || s.length >= 3);
+  if(!parts.length) return [q];
+  if(!parts.includes(q)) parts.push(q);
+  return parts.slice(0, 3);
+}
+
+async function findRelevant(question, topK){
+  const active = files.filter(f => f.on && f.chunks);
+  const queries = splitQuestion(question);
+
+  // Score every chunk against every sub-question.
+  const ranked = [];
+  for(const query of queries){
+    let qVec = null;
+    if(active.some(f => f.vectors)) qVec = await embed([query], true).then(v => v?.[0]).catch(() => null);
+
+    const scored = [];
+    for(const f of active){
+      f.chunks.forEach((c, i) => {
+        const meaning = (qVec && f.vectors?.[i]) ? dot(qVec, f.vectors[i]) : 0;
+        const keyword = keywordScore(query, c.text);
+        // Without vectors, keywords carry the whole score instead of a quarter.
+        const score = f.vectors ? (0.75*meaning + 0.25*keyword) : keyword;
+        scored.push({ ...c, score, uid: f.uid });
+      });
+    }
+    scored.sort((a,b) => b.score - a.score);
+    ranked.push(scored.slice(0, topK));
+  }
+
+  // Round-robin merge: best from part 1, best from part 2, second from part 1…
+  const picked = new Map();
+  for(let rank = 0; rank < topK && picked.size < topK; rank++){
+    for(const list of ranked){
+      const hit = list[rank]; if(!hit) continue;
+      const key = `${hit.uid}:${hit.id}`;
+      if(!picked.has(key) || hit.score > picked.get(key).score) picked.set(key, hit);
+      if(picked.size >= topK) break;
+    }
+  }
+  return [...picked.values()].sort((a,b) => b.score - a.score);
+}
+
+/* ===========================================================================
+   4. EMBEDDINGS - the only time document text leaves the browser besides
+   asking a question. If this fails we fall back to keyword search, which is
+   worse but still works.
+   =========================================================================== */
+
+async function embed(texts, isQuery = false){
+  const res = await fetch("/api/embed", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texts, isQuery })
+  });
+  const data = await res.json();
+  if(!res.ok || data.error) throw new Error(data.error || "embed failed");
+  return data.vectors;
+}
+
+// Embedding is one network call per 100 chunks. A giant PDF would mean dozens
+// of calls and a long wait, so past this point we stay on keyword search.
+const MAX_EMBED_CHUNKS = 600;
+
+async function embedAll(row){
+  if(row.chunks.length > MAX_EMBED_CHUNKS){
+    showNotice(`${row.filename} is large (${row.chunks.length} sections), so it uses `
+             + `keyword search. Answers still work, matching is just less clever.`);
+    return null;
+  }
+  const vectors = [];
+  for(let i = 0; i < row.chunks.length; i += 100){
+    const batch = row.chunks.slice(i, i+100).map(c => c.text);
+    vectors.push(...await embed(batch));
+    row.stats = `embedding ${Math.min(i+100, row.chunks.length)}/${row.chunks.length}…`;
+    drawTabs();
+  }
+  return vectors;
+}
+
+/* ===========================================================================
+   5. LOADING A FILE
+   =========================================================================== */
+
+el('heroAttach').addEventListener('click', () => el('file').click());
+el('file').addEventListener('change', e => { loadMany(e.target.files); e.target.value=''; });
+
+const composer = el('composer');
+['dragenter','dragover'].forEach(ev => composer.addEventListener(ev, e => {
+  e.preventDefault(); composer.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => composer.addEventListener(ev, e => {
+  e.preventDefault(); composer.classList.remove('over'); }));
+composer.addEventListener('drop', e => loadMany(e.dataTransfer.files));
+
+async function loadMany(list){ for(const f of list) await load(f); }
+
+async function load(file){
+  showNotice('');
+  const isPdf = file.name.toLowerCase().endsWith('.pdf');
+
+  const row = {
+    uid: nextUid++, filename: file.name, stats: 'Reading…', on: true, ready: false,
+    isPdf, url: isPdf ? URL.createObjectURL(file) : null,
+    chunks: null, vectors: null, pages: null,
+  };
+  files.push(row);
+  document.body.classList.add('working');
+  drawTabs();
+  if(!previewing) showPreview(row.uid);
+
+  try{
+    const pages = isPdf ? await readPdf(file) : await readDocx(file);
+    if(!pages.length){
+      throw new Error("No readable text — this looks like a scanned document.");
+    }
+    row.pages  = pages;
+    row.chunks = chunkPages(pages, file.name);
+    row.stats  = `${pages.length} pages · ${row.chunks.length} sections`;
+    drawTabs();
+    updateAsk();
+
+    // Meaning-search is an upgrade. If it fails, carry on with keywords.
+    try { row.vectors = await embedAll(row); }
+    catch(err){ showNotice("Meaning-search unavailable, using keyword search."); }
+
+    row.ready = true;
+    row.stats = `${pages.length} pages · ${row.chunks.length} sections`
+              + (row.vectors ? '' : ' · keyword search');
+    drawTabs(); updateAsk();
+    if(previewing === row.uid && !row.isPdf) showPreview(row.uid);
+
+  }catch(err){
+    files = files.filter(f => f !== row);
+    drawTabs();
+    if(!files.length) document.body.classList.remove('working');
+    showNotice(`${file.name} — ${err.message}`);
+  }
+}
+
+/* ===========================================================================
+   6. THE FILE TABS
+   Checkbox = is this file SEARCHED.  Tab name = which file is SHOWN.
+   =========================================================================== */
+
+function drawTabs(){
+  const bar = el('tabs'); bar.innerHTML = '';
+
+  files.forEach((f, index) => {
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (f.uid === previewing ? ' active' : '') + (f.on ? '' : ' excluded');
+    tab.innerHTML = `
+      <input type="checkbox" ${f.on?'checked':''} ${f.ready?'':'disabled'}>
+      <span class="name" title="${esc(f.stats)}">${esc(f.filename)}</span>
+      ${f.ready ? '' : '<span class="working"></span>'}
+      <button class="kill">&times;</button>`;
+
+    tab.querySelector('input').addEventListener('click', e => {
+      e.stopPropagation(); f.on = e.target.checked; drawTabs(); updateAsk();
+    });
+    tab.addEventListener('click', () => showPreview(f.uid));
+    tab.querySelector('.kill').addEventListener('click', e => {
+      e.stopPropagation();
+      if(f.url) URL.revokeObjectURL(f.url);
+      files.splice(index, 1);
+      if(previewing === f.uid){
+        previewing = null;
+        files.length ? showPreview(files[0].uid) : clearPreview();
+      }
+      drawTabs(); updateAsk();
+      if(!files.length) document.body.classList.remove('working');
+    });
+    bar.appendChild(tab);
+  });
+
+  const add = document.createElement('button');
+  add.className = 'addfile'; add.textContent = '+ Add file';
+  add.addEventListener('click', () => el('file').click());
+  bar.appendChild(add);
+}
+
+/* ===========================================================================
+   7. THE PREVIEW
+   =========================================================================== */
+
+function showPreview(uid, page){
+  uid = Number(uid);                 // HTML attributes arrive as strings
+  previewing = uid; drawTabs();
+  const f = files.find(x => x.uid === uid);
+  const pane = el('preview');
+  if(!f) return clearPreview();
+
+  if(f.isPdf && f.url){
+    // The browser's own PDF viewer understands #page=N, so a citation can
+    // drop you straight on the right page.
+    const jump = page ? `#page=${page}&view=FitH` : '#view=FitH';
+    pane.innerHTML = `<iframe src="${f.url}${jump}"></iframe>`;
+    return;
+  }
+
+  if(!f.pages){ pane.innerHTML = `<div class="previewEmpty">Still reading…</div>`; return; }
+
+  let html = '<div class="textview">';
+  f.pages.forEach(p => {
+    html += `<div class="pagemark" data-page="${p.page}">Page ${p.page}</div>`;
+    p.text.split(/\n+/).filter(Boolean).forEach(line => html += `<p>${esc(line)}</p>`);
+  });
+  pane.innerHTML = html + '</div>';
+
+  if(page){
+    const m = pane.querySelector(`[data-page="${page}"]`);
+    if(m) m.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+}
+const clearPreview = () => {
+  previewing = null;
+  el('preview').innerHTML = `<div class="previewEmpty">Select a file above to read it here.</div>`;
+};
+
+/* ===========================================================================
+   8. ASKING
+   =========================================================================== */
+
+el('send').addEventListener('click', ask);
+el('question').addEventListener('keydown', e => { if(e.key === 'Enter') ask(); });
+
+function updateAsk(){
+  const ready = files.filter(f => f.on && f.ready).length;
+  const loading = files.some(f => !f.ready);
+  el('question').disabled = !ready;
+  el('send').disabled = !ready;
+  el('question').placeholder = ready
+    ? `Ask across ${ready} file${ready>1?'s':''}…${loading ? ' (still reading the rest)' : ''}`
+    : (loading ? 'Still reading your file…' : 'Tick a file to ask about it…');
+}
+
+async function ask(){
+  const box = el('question');
+  const question = box.value.trim();
+  if(!question || box.disabled) return;
+
+  box.value = ''; el('send').disabled = true;
+  el('empty')?.remove();
+  addQuestion(question);
+  const pending = addThinking();
+
+  try{
+    // More sections for bigger documents - 5 is thin for a 1000-page file.
+    const total = files.filter(f => f.on && f.chunks).reduce((n,f) => n + f.chunks.length, 0);
+    const topK = total > 2000 ? 12 : total > 400 ? 8 : 5;
+
+    const chunks = await findRelevant(question, topK);
+
+    const res = await fetch('/api/ask', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ question, history, chunks: chunks.map(c => ({
+        filename: c.filename, page: c.page, text: c.text, score: c.score
+      }))})
+    });
+    const data = await res.json();
+    pending.remove();
+
+    if(!res.ok || data.error) addError(data.error || 'Something went wrong.');
+    else {
+      addAnswer(data);
+      history.push({ question, answer: data.answer || '' });
+      if(history.length > 6) history = history.slice(-6);
+    }
+  }catch(err){
+    pending.remove();
+    addError(err.message || 'Something went wrong.');
+  }
+  updateAsk(); box.focus();
+}
+
+/* ===========================================================================
+   9. DRAWING ANSWERS
+   =========================================================================== */
+
+const thread = el('thread');
+const scrollDown = () => thread.scrollTop = thread.scrollHeight;
+
+function addQuestion(t){
+  const n = document.createElement('div');
+  n.className = 'q'; n.innerHTML = `<span class="qtag">You asked</span>${esc(t)}`;
+  thread.appendChild(n); scrollDown();
+}
+function addThinking(){
+  const n = document.createElement('div');
+  n.className='thinking'; n.textContent='Reading your files';
+  thread.appendChild(n); scrollDown(); return n;
+}
+function addError(m){
+  const n = document.createElement('div');
+  n.className='a';
+  n.innerHTML = `<div class="badge general"><span class="dot"></span>Error</div>
+                 <div class="answer">${esc(m)}</div>`;
+  thread.appendChild(n); scrollDown();
+}
+
+function addAnswer(d){
+  const labels = { document:'From your files', partial:'Partly in your files',
+                   general:'Not in your files — general knowledge' };
+  const src = labels[d.source] ? d.source : 'general';
+
+  const n = document.createElement('div'); n.className = 'a';
+  let html = `<div class="badge ${src}"><span class="dot"></span>${labels[src]}</div>`;
+  html += `<div class="answer">${paras(d.answer)}</div>`;
+  if(d.explain) html += `<div class="explain"><div class="label">In simple terms</div>${paras(d.explain)}</div>`;
+  if(d.missing) html += `<div class="missing">Not covered by your files: ${esc(d.missing)}</div>`;
+
+  // Only quotes that survived the check on the server appear here.
+  if(d.quotes?.length){
+    html += `<div class="label" style="margin-top:20px">Verified lines</div><div class="slips">`;
+    d.quotes.forEach((q,i) => {
+      const s = d.sources?.[i] || {};
+      const f = files.find(x => x.filename === s.filename);
+      const tag = s.filename ? `${s.filename} · page ${s.page}` : 'In your files';
+      const attr = f ? ` data-doc="${f.uid}" data-page="${s.page||''}"` : '';
+      html += `<div class="slip"><span class="page"${attr}>${esc(tag)}</span>${esc(q)}</div>`;
+    });
+    html += `</div>`;
+  }
+
+  if(d.evidence?.length){
+    html += `<details><summary>Show the sections searched (${d.evidence.length})</summary>`;
+    d.evidence.forEach(e => {
+      const f = files.find(x => x.filename === e.filename);
+      const attr = f ? ` class="jump" data-doc="${f.uid}" data-page="${e.page}"` : '';
+      html += `<div class="raw"><strong${attr}>${esc(e.filename)} · page ${e.page}</strong>
+               · match ${e.score}<br>${esc(e.text)}…</div>`;
+    });
+    html += `</details>`;
+  }
+
+  n.innerHTML = html;
+  // Clicking a citation opens that file at that page.
+  n.querySelectorAll('[data-doc]').forEach(tag => tag.addEventListener('click',
+    () => showPreview(tag.getAttribute('data-doc'), tag.getAttribute('data-page'))));
+
+  thread.appendChild(n); scrollDown();
+}
+
+/* ---- helpers ---- */
+function esc(t){ const d = document.createElement('div'); d.textContent = t ?? ''; return d.innerHTML; }
+function paras(t){ return (t||'').split(/\n+/).filter(Boolean).map(l => `<p>${esc(l)}</p>`).join(''); }
+function showNotice(m){
+  const target = document.body.classList.contains('working') ? el('notice') : el('heroNotice');
+  target.textContent = m; target.classList.toggle('show', !!m);
+}
+
+updateAsk();
+</script>
+</body>
+</html>

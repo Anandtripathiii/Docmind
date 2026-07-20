@@ -1,0 +1,23 @@
+# Netlify configuration
+#
+# This project lives in a subfolder called "netlify" inside the repo, so we set
+# a base directory. Everything below is then relative to THAT folder:
+#
+#   repo/
+#   └── netlify/          <- base
+#       ├── public/       <- publish (the website itself)
+#       └── functions/    <- functions
+#
+# If you ever move these files to the top of the repo, delete the "base" line
+# and change functions to "netlify/functions".
+
+[build]
+  base = "netlify"
+  publish = "public"
+  functions = "functions"
+
+  # Plain HTML, nothing to compile.
+  command = "echo 'no build needed'"
+
+[functions]
+  node_bundler = "esbuild"

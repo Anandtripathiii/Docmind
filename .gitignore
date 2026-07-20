@@ -1,0 +1,36 @@
+# ===========================================================================
+# SECRETS - never commit these. A key pushed to a public repo is scraped by
+# bots within minutes, and deleting it later doesn't help because git keeps
+# the history forever.
+# ===========================================================================
+.env
+.env.local
+*.key
+
+# ---- Python junk ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ---- virtual environments ----
+venv/
+env/
+.venv/
+
+# ---- this app's cache of processed documents ----
+# These are rebuilt automatically and can be hundreds of MB.
+.docmind_cache/
+
+# ---- test files and personal documents ----
+# Don't accidentally publish the PDFs you were testing with.
+*.pdf
+*.docx
+!sample*.pdf
+result.txt
+
+# ---- editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
