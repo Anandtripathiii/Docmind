@@ -23,7 +23,8 @@ import { getStore } from "@netlify/blobs";
 
 const SHOWN = 10;          // how many appear on the site
 const MAX_NAME = 40;
-const MAX_TEXT = 300;
+const MAX_TEXT = 1200;     // hard character ceiling (150 words fits inside this)
+const MAX_WORDS = 150;     // the real limit - matches the counter in the page
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
@@ -81,7 +82,10 @@ export default async (request) => {
     }
 
     const name = clean(body.name, MAX_NAME);
-    const text = clean(body.review, MAX_TEXT);
+    // Enforce the word limit here too. The counter in the page is a courtesy;
+    // anyone can post straight to this endpoint and skip it.
+    const text = clean(body.review, MAX_TEXT)
+      .split(/\s+/).slice(0, MAX_WORDS).join(" ");
 
     if (!name || !text) return json({ error: "Please fill in both fields." }, 400);
     if (text.length < 4) return json({ error: "That review is a bit short." }, 400);

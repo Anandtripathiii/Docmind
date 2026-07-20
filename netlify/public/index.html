@@ -17,6 +17,13 @@
   --radius:14px;
 }
 *{box-sizing:border-box}
+
+/* Hide scrollbars but keep scrolling. The default chrome-coloured bar and its
+   white arrows clash badly with a dark theme, and on the textarea it pokes
+   outside the rounded corner. Content still scrolls with wheel, trackpad,
+   touch and keyboard - only the visual bar is gone. */
+*::-webkit-scrollbar{width:0;height:0}
+*{scrollbar-width:none;-ms-overflow-style:none}
 html,body{height:100%}
 body{margin:0;background:var(--ink);color:var(--paper);font-family:var(--body);
   font-size:17px;line-height:1.6}
@@ -181,7 +188,12 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
 
 .rcard{flex:0 0 270px;background:rgba(20,26,68,.7);border:1px solid var(--panel-edge);
   border-radius:12px;padding:14px 16px;text-align:left}
-.rcard .rtext{font-size:14px;line-height:1.5;margin:0 0 8px}
+/* Clamp long reviews to 6 lines in the strip. Without this, one 150-word
+   review makes its card several times taller than the rest and the whole row
+   looks broken. The full text is still stored. */
+.rcard .rtext{font-size:14px;line-height:1.5;margin:0 0 8px;
+  display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;
+  overflow:hidden}
 .rcard .rwho{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--highlight)}
 
@@ -206,10 +218,14 @@ button.go:disabled{opacity:.45;cursor:not-allowed}
 .leave input,.leave textarea{background:rgba(11,15,43,.7);border:1px solid var(--panel-edge);
   border-radius:9px;padding:9px 12px;color:var(--paper);font-family:var(--body);font-size:14px}
 .leave input{width:150px}
-.leave textarea{width:300px;height:38px;resize:vertical}
+.leave textarea{width:300px;height:38px;resize:none;overflow:hidden;
+  line-height:1.4;max-height:260px;transition:height .12s ease}
 .leave button{font-family:var(--display);font-size:14px;background:none;color:var(--highlight);
   border:1px solid var(--panel-edge);border-radius:9px;padding:0 16px;cursor:pointer}
 .leave button:hover{border-color:var(--highlight)}
+.counter{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+.counter.full{color:var(--warn)}
+
 .thanks{color:var(--verified);font-size:14px;margin-top:10px;display:none}
 .thanks.show{display:block}
 
@@ -260,9 +276,10 @@ footer a{color:var(--muted)}
 
       <form class="leave" id="reviewForm">
         <input type="text" name="name_" placeholder="Your name" required maxlength="40">
-        <textarea name="review" placeholder="Write your review…" required maxlength="300"></textarea>
+        <textarea name="review" placeholder="Write your review…" required maxlength="1200"></textarea>
         <button type="submit">Send</button>
       </form>
+        <div class="counter" id="counter">0 / 150 words</div>
         <div class="thanks" id="thanks">Thanks — that means a lot.</div>
       </div>
 
@@ -849,15 +866,21 @@ function drawReviews(list){
       <span class="rwho">${esc(r.who)}</span>
     </div>`;
 
-  // Rendered twice on purpose. The animation slides the track exactly 50%
-  // across, so the second copy lands where the first started and the loop has
-  // no visible seam.
-  const cards = reviews.map(card).join('');
-  track.innerHTML = cards + cards;
+  // With only one or two reviews, a single set doesn't fill the strip - you
+  // get a lone card drifting across empty space with a visible gap. So repeat
+  // the set until there's enough to cover the width...
+  const perSet = Math.max(1, Math.ceil(6 / reviews.length));
+  let set = '';
+  for(let i = 0; i < perSet; i++) set += reviews.map(card).join('');
 
-  // Fewer cards need to travel less distance to loop, or a single review
-  // would crawl across the screen for half a minute.
-  track.style.animationDuration = Math.max(14, reviews.length * 6) + 's';
+  // ...then render that whole run TWICE. The animation slides exactly 50%
+  // across, so the second run lands where the first began and the loop has no
+  // visible seam or restart.
+  track.innerHTML = set + set;
+
+  // Longer runs need longer to travel, or they'd race past unreadably.
+  const totalCards = reviews.length * perSet;
+  track.style.animationDuration = Math.max(18, totalCards * 5) + 's';
 }
 
 async function loadReviews(){
@@ -873,6 +896,33 @@ loadReviews();
 
 /* Submitting adds the review and redraws the strip straight away, so people
    can see their own words land. */
+/* The review box grows to fit what's typed instead of showing a scrollbar or
+   a drag handle. Only the box changes size - the layout around it stays put,
+   because it's capped and the row it sits in wraps rather than stretches. */
+const WORD_LIMIT = 150;
+                         // past, so nobody reads a paragraph off one anyway
+
+const countWords = t => (t.trim().match(/\S+/g) || []).length;
+
+const reviewBox = document.querySelector('.leave textarea');
+const counter = document.getElementById('counter');
+
+reviewBox?.addEventListener('input', () => {
+  // Trim anything past the limit rather than silently refusing keystrokes,
+  // which feels like the box has frozen.
+  const words = reviewBox.value.trim().match(/\S+/g) || [];
+  if(words.length > WORD_LIMIT){
+    reviewBox.value = words.slice(0, WORD_LIMIT).join(' ') + ' ';
+  }
+
+  const n = countWords(reviewBox.value);
+  counter.textContent = `${n} / ${WORD_LIMIT} words`;
+  counter.classList.toggle('full', n >= WORD_LIMIT);
+
+  reviewBox.style.height = 'auto';                     // shrink first, so
+  reviewBox.style.height = Math.min(reviewBox.scrollHeight, 260) + 'px';
+});                                                    // deleting text shrinks too
+
 const reviewForm = document.getElementById('reviewForm');
 reviewForm?.addEventListener('submit', async e => {
   e.preventDefault();
