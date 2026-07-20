@@ -568,7 +568,10 @@ async function ask(){
   try{
     // More sections for bigger documents - 5 is thin for a 1000-page file.
     const total = files.filter(f => f.on && f.chunks).reduce((n,f) => n + f.chunks.length, 0);
-    const topK = total > 2000 ? 12 : total > 400 ? 8 : 5;
+    // Kept modest on purpose: the serverless function has ~10 seconds, and
+    // more sections means a slower reply. Locally the Python version can
+    // afford 12; here 8 is the safe ceiling.
+    const topK = total > 400 ? 8 : 5;
 
     const chunks = await findRelevant(question, topK);
 
@@ -578,7 +581,23 @@ async function ask(){
         filename: c.filename, page: c.page, text: c.text, score: c.score
       }))})
     });
-    const data = await res.json();
+
+    // A function that times out returns an HTML error page, not JSON. Parsing
+    // that blindly gives "Unexpected token '<'", which tells you nothing. Read
+    // it as text first and explain what actually happened.
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      pending.remove();
+      addError(res.status === 502 || raw.includes('<')
+        ? 'The answer took too long and the server gave up. Try a shorter '
+          + 'question, or untick a file to search less at once.'
+        : `Unexpected reply from the server (${res.status}).`);
+      updateAsk(); box.focus();
+      return;
+    }
     pending.remove();
 
     if(!res.ok || data.error) addError(data.error || 'Something went wrong.');

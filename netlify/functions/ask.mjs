@@ -108,7 +108,9 @@ export default async (request) => {
   }
 
   const question = (body.question || "").trim();
-  const chunks = Array.isArray(body.chunks) ? body.chunks.slice(0, 14) : [];
+  // Cap what we send. More context is better for the answer but worse for the
+  // clock, and a timeout gives you nothing at all.
+  const chunks = Array.isArray(body.chunks) ? body.chunks.slice(0, 8) : [];
   const history = Array.isArray(body.history) ? body.history.slice(-2) : [];
 
   if (!question) return json({ error: "Ask a question first." }, 400);
@@ -117,7 +119,7 @@ export default async (request) => {
   // Guard the payload size. A browser could otherwise post a whole book and
   // blow past both the function timeout and the model's input limit.
   const excerpts = chunks
-    .map((c) => `[${c.filename || "document"} - page ${c.page}]\n${(c.text || "").slice(0, 2500)}`)
+    .map((c) => `[${c.filename || "document"} - page ${c.page}]\n${(c.text || "").slice(0, 1600)}`)
     .join("\n\n");
 
   const recap = history.length
@@ -150,7 +152,15 @@ export default async (request) => {
           generationConfig: {
             temperature: 0,
             responseMimeType: "application/json",
-            maxOutputTokens: 4096,
+            // Serverless functions are killed after about 10 seconds. A
+            // thinking model can spend most of that reasoning before it
+            // writes a word, so the request dies and Netlify returns an HTML
+            // error page instead of JSON.
+            //
+            // thinkingBudget 0 turns that off. Answers are slightly less
+            // considered, but they arrive - which beats a timeout.
+            thinkingConfig: { thinkingBudget: 0 },
+            maxOutputTokens: 2048,
           },
         }),
       }
