@@ -167,7 +167,11 @@ export default async (request) => {
             //
             // thinkingBudget 0 turns that off. Answers are slightly less
             // considered, but they arrive - which beats a timeout.
-            thinkingConfig: { thinkingBudget: 0 },
+            //
+            // BUT: Gemini 3.x rejects this setting outright with a 400
+            // "invalid argument". So only send it to the 2.x/flash-latest
+            // models that understand it.
+            ...(/^gemini-3/.test(MODEL) ? {} : { thinkingConfig: { thinkingBudget: 0 } }),
             maxOutputTokens: 2048,
           },
         }),
